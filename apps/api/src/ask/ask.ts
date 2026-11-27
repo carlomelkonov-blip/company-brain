@@ -164,7 +164,7 @@ async function answerSearch(sql: Sql, scope: AccessScope, question: string): Pro
   }
   const tsquery = terms.map((t) => `${t}:*`).join(" | ");
   // Access rules are applied inside the query: only content the viewer may read is ever retrieved.
-  const hits = await sql<Hit[]>`
+  const rawHits = await sql<Hit[]>`
     SELECT s.id AS source_id, s.title, s.kind, s.occurred_at::text, s.url, pr.name AS project_name, c.text,
            ts_rank(c.tsv, to_tsquery('english', ${tsquery})) AS rank
     FROM chunks c
@@ -172,7 +172,10 @@ async function answerSearch(sql: Sql, scope: AccessScope, question: string): Pro
     LEFT JOIN entities pr ON pr.id = s.project_id
     WHERE c.tsv @@ to_tsquery('english', ${tsquery}) AND ${openableSourcesFilter(sql, scope)}
     ORDER BY rank DESC, s.occurred_at DESC
-    LIMIT 8`;
+    LIMIT 24`;
+  // A chunk must match at least two of the question's key words (or the only one), so a single shared
+  // word such as a year doesn't pass for an answer.
+  const hits = rawHits.filter((h) => matchedTerms(h.text, terms) >= Math.min(2, terms.length)).slice(0, 8);
 
   if (hits.length === 0) {
     return {
@@ -229,6 +232,12 @@ say you are not sure and what is missing. Be concise: at most 6 sentences or a s
     citations,
     answer: `Here's what I found in sources you can open (newest first):\n${bullets.join("\n")}`,
   };
+}
+
+/** How many query terms appear in the text as a word or word prefix ("assume" matches "assumes"). */
+export function matchedTerms(text: string, terms: string[]): number {
+  const words = text.toLowerCase().split(/[^\p{L}\p{N}]+/u);
+  return terms.filter((t) => words.some((w) => w.startsWith(t))).length;
 }
 
 /** Picks the lines of a chunk that mention the most query terms. */
