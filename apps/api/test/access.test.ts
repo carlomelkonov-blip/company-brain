@@ -62,8 +62,9 @@ describe("answers never leak content", () => {
   it("a sales manager cannot learn the board's budget assumption", async () => {
     const r = await ask(f.db, await f.scopeOf("nikolay"), "What revenue growth does the 2027 budget assume?");
     expect(r.answer).not.toMatch(/12%/);
-    // Only sources Nikolay may open can be cited (e.g. Riverside notes mentioning 2027), never the board or budget ones.
-    expect(r.citations.map((c) => c.title).join("|")).not.toMatch(/Board Prep|budget/i);
+    // Nothing he may open is about the budget: an honest "not found", not unrelated notes that mention 2027.
+    expect(r.citations).toHaveLength(0);
+    expect(r.answer).toMatch(/couldn't find/);
   });
 
   it("the CFO, who attended, gets it with a citation", async () => {
